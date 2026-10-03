@@ -73,7 +73,7 @@ class Pengaturan(context: Context) {
     fun toggleTaskbar(pkg: String) { if (!taskbar.remove(pkg)) taskbar.add(pkg); simpan() }
     fun toggleDesktop(pkg: String) { if (!desktop.remove(pkg)) desktop.add(pkg); simpan() }
 
-    fun setWallpaper(i: Int) {
+    fun pilihWallpaper(i: Int) {
         wallpaper = i
         sp.edit().putInt("wallpaper", i).apply()
     }

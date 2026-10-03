@@ -152,7 +152,7 @@ fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
             text = {
                 Column {
                     daftarWallpaper.forEachIndexed { i, w ->
-                        TextButton(onClick = { p.setWallpaper(i); dialogWall = false }) {
+                        TextButton(onClick = { p.pilihWallpaper(i); dialogWall = false }) {
                             Text(w.nama + if (i == p.wallpaper) "  ✓" else "")
                         }
                     }
