@@ -7,6 +7,7 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -25,6 +26,8 @@ data class AppInfo(
     val komponen: ComponentName,
     val ikon: ImageBitmap,
 )
+
+val WARNA_PILIHAN = listOf(Color(0xFF181822), Color(0xFF0D2B5E), Color(0xFF3A1466), Color(0xFF14421E))
 
 data class Wallpaper(val nama: String, val warna: List<Color>)
 
@@ -77,6 +80,53 @@ class Pengaturan(context: Context) {
 
     var selaluJendela by mutableStateOf(sp.getBoolean("jendela", false))
         private set
+
+    var transparansi by mutableFloatStateOf(sp.getFloat("alpha", 0.85f))
+        private set
+
+    var warnaBar by mutableIntStateOf(sp.getInt("warna", 0))
+        private set
+
+    var taskbarTengah by mutableStateOf(sp.getBoolean("tengah", false))
+        private set
+
+    /** Nama aplikasi yang diganti pengguna (pkg -> nama). */
+    val namaKustom = mutableStateMapOf<String, String>().apply {
+        bacaNama().forEach { put(it.first, it.second) }
+    }
+
+    private fun bacaNama(): List<Pair<String, String>> =
+        (sp.getString("nama", "") ?: "").split(",").mapNotNull { t ->
+            val b = t.split(":")
+            if (b.size == 2 && b[0].isNotBlank()) b[0] to Uri.decode(b[1]) else null
+        }
+
+    fun setNama(pkg: String, nama: String) {
+        if (nama.isBlank()) {
+            namaKustom.remove(pkg)
+        } else {
+            namaKustom[pkg] = nama.trim()
+        }
+        sp.edit().putString(
+            "nama",
+            namaKustom.entries.joinToString(",") { "${it.key}:${Uri.encode(it.value)}" },
+        ).apply()
+    }
+
+    fun aturTransparansi(f: Float) {
+        transparansi = f
+        sp.edit().putFloat("alpha", f).apply()
+    }
+
+    fun aturWarnaBar(i: Int) {
+        warnaBar = i
+        sp.edit().putInt("warna", i).apply()
+    }
+
+    fun aturTengah(aktif: Boolean) {
+        taskbarTengah = aktif
+        sp.edit().putBoolean("tengah", aktif).apply()
+    }
 
     private fun bacaPosisi(): List<Pair<String, IntOffset>> =
         (sp.getString("posisi", "") ?: "").split(",").mapNotNull { teks ->

@@ -67,8 +67,11 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
-private val WARNA_BAR = Color(0xD9181822)
-private val WARNA_PANEL = Color(0xF2202030)
+private fun warnaBarDari(p: Pengaturan): Color =
+    WARNA_PILIHAN[p.warnaBar.coerceIn(0, WARNA_PILIHAN.lastIndex)].copy(alpha = p.transparansi)
+
+private fun warnaPanelDari(p: Pengaturan): Color =
+    WARNA_PILIHAN[p.warnaBar.coerceIn(0, WARNA_PILIHAN.lastIndex)].copy(alpha = 0.96f)
 private val JAM = DateTimeFormatter.ofPattern("HH:mm")
 private val TANGGAL = DateTimeFormatter.ofPattern("d/M/yyyy")
 
@@ -127,11 +130,12 @@ private fun hitungTempat(
 fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
     val ctx = LocalContext.current
     val scope = rememberCoroutineScope()
-    var apps by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
+    var appsAsli by remember { mutableStateOf<List<AppInfo>>(emptyList()) }
+    val apps = appsAsli.map { it.copy(nama = p.namaKustom[it.pkg] ?: it.nama) }
+    val manajer = remember { ManajerJendela() }
     var start by remember { mutableStateOf(false) }
     var menuPos by remember { mutableStateOf<Offset?>(null) }
     var dialogWall by remember { mutableStateOf(false) }
-    var dialogInfo by remember { mutableStateOf(false) }
     var foto by remember { mutableStateOf<ImageBitmap?>(null) }
     var fotoVersi by remember { mutableIntStateOf(0) }
 
@@ -150,8 +154,8 @@ fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
     }
 
     LaunchedEffect(versi) {
-        apps = withContext(Dispatchers.IO) { Aplikasi.muat(ctx) }
-        p.isiAwal(apps.map { it.pkg }.toSet())
+        appsAsli = withContext(Dispatchers.IO) { Aplikasi.muat(ctx) }
+        p.isiAwal(appsAsli.map { it.pkg }.toSet())
     }
     LaunchedEffect(fotoVersi, p.pakaiFoto) {
         foto = if (p.pakaiFoto) withContext(Dispatchers.IO) { Foto.muat(ctx) } else null
@@ -210,6 +214,8 @@ fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
             }
         }
 
+        LapisanJendela(manajer, p)
+
         if (apps.isNotEmpty() && ikonDesktop.isEmpty()) {
             Text(
                 "Desktop masih kosong.\nBuka menu Start, tekan lama sebuah aplikasi,\nlalu pilih \"Taruh di desktop\".",
@@ -225,12 +231,9 @@ fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
                 DropdownMenu(expanded = true, onDismissRequest = { menuPos = null }) {
                     ItemMenu("Ganti wallpaper") { menuPos = null; dialogWall = true }
                     ItemMenu("Wallpaper dari foto…") { menuPos = null; pilihFoto.launch("image/*") }
-                    ItemMenu("Info layar dan DPI") { menuPos = null; dialogInfo = true }
-                    ItemMenu(if (p.selaluJendela) "Mode jendela: aktif ✓" else "Selalu buka dalam jendela") {
-                        menuPos = null
-                        p.aturJendela(!p.selaluJendela)
-                    }
-                    ItemMenu("Pengaturan layar") { menuPos = null; Peluncur.pengaturan(ctx, Settings.ACTION_DISPLAY_SETTINGS) }
+                    ItemMenu("Pengaturan PC") { menuPos = null; manajer.buka(Jenis.PENGATURAN) }
+                    ItemMenu("Berkas") { menuPos = null; manajer.buka(Jenis.BERKAS) }
+                    ItemMenu("Peramban") { menuPos = null; manajer.buka(Jenis.PERAMBAN) }
                     ItemMenu("Pengaturan sistem") { menuPos = null; Peluncur.pengaturan(ctx, Settings.ACTION_SETTINGS) }
                     ItemMenu("Opsi pengembang (jendela bebas)") { menuPos = null; Peluncur.pengaturan(ctx, Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS) }
                     ItemMenu("Atur launcher default") { menuPos = null; Peluncur.pengaturan(ctx, Settings.ACTION_HOME_SETTINGS) }
@@ -239,8 +242,10 @@ fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
         }
 
         Column(Modifier.align(Alignment.BottomCenter).imePadding()) {
-            AnimatedVisibility(start) { StartMenu(apps, p, buka) }
-            Taskbar(p.taskbar.mapNotNull { peta[it] }, p, start, { start = !start }, buka)
+            AnimatedVisibility(start) {
+                StartMenu(apps, p, buka) { jenis, url -> start = false; manajer.buka(jenis, url) }
+            }
+            Taskbar(p.taskbar.mapNotNull { peta[it] }, p, start, { start = !start }, buka, manajer)
         }
     }
 
@@ -260,36 +265,6 @@ fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
             confirmButton = { TextButton(onClick = { dialogWall = false }) { Text("Tutup") } },
         )
     }
-    if (dialogInfo) InfoLayar { dialogInfo = false }
-}
-
-@Composable
-private fun InfoLayar(tutup: () -> Unit) {
-    val res = LocalContext.current.resources
-    val dm = res.displayMetrics
-    val sw = res.configuration.smallestScreenWidthDp
-    val sisiPendek = minOf(dm.widthPixels, dm.heightPixels)
-    AlertDialog(
-        onDismissRequest = tutup,
-        title = { Text("Info layar dan DPI") },
-        text = {
-            SelectionContainer {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Text("Lebar terkecil sekarang: $sw dp")
-                    Text("Kerapatan: ${dm.densityDpi} dpi")
-                    Text("Resolusi: ${dm.widthPixels} x ${dm.heightPixels} px")
-                    Spacer(Modifier.height(8.dp))
-                    Text("Perintah untuk mencapai lebar terkecil tertentu (jalankan lewat ADB):")
-                    listOf(600, 720, 823).forEach { target ->
-                        val dpi = sisiPendek * 160 / target
-                        Text("$target dp: adb shell wm density $dpi")
-                    }
-                    Text("Pulihkan: adb shell wm density reset")
-                }
-            }
-        },
-        confirmButton = { TextButton(onClick = tutup) { Text("Tutup") } },
-    )
 }
 
 @Composable
@@ -375,18 +350,35 @@ fun IkonApp(app: AppInfo, p: Pengaturan, buka: (AppInfo, Boolean) -> Unit, ukura
 @Composable
 fun MenuAplikasi(app: AppInfo, p: Pengaturan, tampil: Boolean, buka: (AppInfo, Boolean) -> Unit, tutup: () -> Unit) {
     val ctx = LocalContext.current
+    var ganti by remember { mutableStateOf(false) }
     DropdownMenu(expanded = tampil, onDismissRequest = tutup) {
         ItemMenu("Buka") { tutup(); buka(app, false) }
         ItemMenu("Buka dalam jendela") { tutup(); buka(app, true) }
         ItemMenu(if (app.pkg in p.taskbar) "Lepas dari taskbar" else "Sematkan ke taskbar") { tutup(); p.toggleTaskbar(app.pkg) }
         ItemMenu(if (app.pkg in p.desktop) "Hapus dari desktop" else "Taruh di desktop") { tutup(); p.toggleDesktop(app.pkg) }
+        ItemMenu("Ganti nama") { tutup(); ganti = true }
         ItemMenu("Info aplikasi") { tutup(); Peluncur.info(ctx, app) }
         ItemMenu("Copot pemasangan") { tutup(); Peluncur.copot(ctx, app) }
+    }
+    if (ganti) {
+        var teks by remember { mutableStateOf(app.nama) }
+        AlertDialog(
+            onDismissRequest = { ganti = false },
+            title = { Text("Ganti nama") },
+            text = { OutlinedTextField(value = teks, onValueChange = { teks = it }, singleLine = true) },
+            confirmButton = { TextButton(onClick = { p.setNama(app.pkg, teks); ganti = false }) { Text("Simpan") } },
+            dismissButton = { TextButton(onClick = { p.setNama(app.pkg, ""); ganti = false }) { Text("Reset") } },
+        )
     }
 }
 
 @Composable
-fun StartMenu(apps: List<AppInfo>, p: Pengaturan, buka: (AppInfo, Boolean) -> Unit) {
+fun StartMenu(
+    apps: List<AppInfo>,
+    p: Pengaturan,
+    buka: (AppInfo, Boolean) -> Unit,
+    onBuka: (Jenis, String) -> Unit,
+) {
     val lebar = layarLebar()
     var cari by remember { mutableStateOf("") }
     val hasil = remember(apps, cari) {
@@ -397,7 +389,7 @@ fun StartMenu(apps: List<AppInfo>, p: Pengaturan, buka: (AppInfo, Boolean) -> Un
         contentAlignment = if (lebar) Alignment.Center else Alignment.CenterStart,
     ) {
         Surface(
-            color = WARNA_PANEL,
+            color = warnaPanelDari(p),
             shape = RoundedCornerShape(16.dp),
             modifier = Modifier.widthIn(max = if (lebar) 640.dp else 420.dp).fillMaxWidth(),
         ) {
@@ -406,9 +398,12 @@ fun StartMenu(apps: List<AppInfo>, p: Pengaturan, buka: (AppInfo, Boolean) -> Un
                     value = cari,
                     onValueChange = { cari = it },
                     singleLine = true,
-                    placeholder = { Text("Cari aplikasi…") },
+                    placeholder = { Text("Cari aplikasi atau web…") },
                     keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    keyboardActions = KeyboardActions(onSearch = { hasil.firstOrNull()?.let { buka(it, false) } }),
+                    keyboardActions = KeyboardActions(onSearch = {
+                        val a = hasil.firstOrNull()
+                        if (a != null) buka(a, false) else if (cari.isNotBlank()) onBuka(Jenis.PERAMBAN, cari)
+                    }),
                     colors = OutlinedTextFieldDefaults.colors(
                         focusedTextColor = Color.White,
                         unfocusedTextColor = Color.White,
@@ -420,11 +415,33 @@ fun StartMenu(apps: List<AppInfo>, p: Pengaturan, buka: (AppInfo, Boolean) -> Un
                     ),
                     modifier = Modifier.fillMaxWidth(),
                 )
-                Spacer(Modifier.height(8.dp))
+                Row(
+                    Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Jenis.values().forEach { jn ->
+                        Surface(
+                            onClick = { onBuka(jn, "") },
+                            color = Color(0x22FFFFFF),
+                            shape = RoundedCornerShape(10.dp),
+                            modifier = Modifier.weight(1f),
+                        ) {
+                            Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(jn.ikon, fontSize = 22.sp)
+                                Text(jn.judul, color = Color.White, fontSize = 11.sp, maxLines = 1)
+                            }
+                        }
+                    }
+                }
                 Text("Semua aplikasi (${hasil.size})", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                if (hasil.isEmpty() && cari.isNotBlank()) {
+                    TextButton(onClick = { onBuka(Jenis.PERAMBAN, cari) }) {
+                        Text("🌐 Cari \"$cari\" di web", color = Color(0xFF4FC3F7))
+                    }
+                }
                 LazyVerticalGrid(
                     columns = GridCells.Adaptive(88.dp),
-                    modifier = Modifier.heightIn(max = if (lebar) 520.dp else 440.dp),
+                    modifier = Modifier.heightIn(max = if (lebar) 440.dp else 360.dp),
                 ) {
                     items(hasil, key = { it.pkg }) { a -> IkonApp(a, p, buka, 44.dp, 88.dp) }
                 }
@@ -446,21 +463,43 @@ private fun TombolStart(aktif: Boolean, onStart: () -> Unit) {
 }
 
 @Composable
+private fun TombolJendela(j: Jendela, aktif: Boolean, m: ManajerJendela) {
+    Box(
+        Modifier
+            .size(44.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (aktif) Color(0x33FFFFFF) else Color.Transparent)
+            .clickable { m.ketukTaskbar(j) },
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(j.jenis.ikon, fontSize = 22.sp)
+        Box(
+            Modifier
+                .align(Alignment.BottomCenter)
+                .padding(bottom = 3.dp)
+                .size(width = 16.dp, height = 3.dp)
+                .background(if (j.diperkecil) Color(0x66FFFFFF) else Color(0xFF4FC3F7), RoundedCornerShape(2.dp))
+        )
+    }
+}
+
+@Composable
 fun Taskbar(
     apps: List<AppInfo>,
     p: Pengaturan,
     startBuka: Boolean,
     onStart: () -> Unit,
     buka: (AppInfo, Boolean) -> Unit,
+    m: ManajerJendela,
 ) {
-    val lebar = layarLebar()
-    Surface(color = WARNA_BAR, modifier = Modifier.fillMaxWidth()) {
+    val tengah = layarLebar() || p.taskbarTengah
+    val aktifId = m.aktifId()
+    Surface(color = warnaBarDari(p), modifier = Modifier.fillMaxWidth()) {
         Row(
             Modifier.navigationBarsPadding().height(56.dp).padding(horizontal = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            if (lebar) {
-                // Layar lebar: tombol Start dan ikon di tengah, seperti Windows 11.
+            if (tengah) {
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     Row(
                         Modifier.horizontalScroll(rememberScrollState()),
@@ -469,6 +508,7 @@ fun Taskbar(
                     ) {
                         TombolStart(startBuka, onStart)
                         apps.forEach { a -> key(a.pkg) { IkonTaskbar(a, p, buka) } }
+                        m.daftar.forEach { j -> key(j.id) { TombolJendela(j, j.id == aktifId, m) } }
                     }
                 }
             } else {
@@ -479,6 +519,7 @@ fun Taskbar(
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     items(apps, key = { it.pkg }) { a -> IkonTaskbar(a, p, buka) }
+                    items(m.daftar, key = { "w${it.id}" }) { j -> TombolJendela(j, j.id == aktifId, m) }
                 }
             }
             Tray()
