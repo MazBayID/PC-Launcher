@@ -3,14 +3,21 @@ package com.pclauncher
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.runtime.mutableStateMapOf
+import androidx.compose.ui.unit.IntOffset
 import androidx.core.graphics.drawable.toBitmap
+import java.io.File
 
 data class AppInfo(
     val nama: String,
@@ -57,8 +64,45 @@ class Pengaturan(context: Context) {
     val taskbar = mutableStateListOf<String>().apply { addAll(baca("taskbar")) }
     val desktop = mutableStateListOf<String>().apply { addAll(baca("desktop")) }
 
+    /** Posisi ikon desktop pada grid: kolom (x) dan baris (y). */
+    val posisi = mutableStateMapOf<String, IntOffset>().apply {
+        bacaPosisi().forEach { put(it.first, it.second) }
+    }
+
     var wallpaper by mutableIntStateOf(sp.getInt("wallpaper", 0))
         private set
+
+    var pakaiFoto by mutableStateOf(sp.getBoolean("foto", false))
+        private set
+
+    var selaluJendela by mutableStateOf(sp.getBoolean("jendela", false))
+        private set
+
+    private fun bacaPosisi(): List<Pair<String, IntOffset>> =
+        (sp.getString("posisi", "") ?: "").split(",").mapNotNull { teks ->
+            val b = teks.split(":")
+            val x = b.getOrNull(1)?.toIntOrNull()
+            val y = b.getOrNull(2)?.toIntOrNull()
+            if (b.size == 3 && x != null && y != null) b[0] to IntOffset(x, y) else null
+        }
+
+    fun setPosisi(pkg: String, kolom: Int, baris: Int) {
+        posisi[pkg] = IntOffset(kolom, baris)
+        sp.edit().putString(
+            "posisi",
+            posisi.entries.joinToString(",") { "${it.key}:${it.value.x}:${it.value.y}" },
+        ).apply()
+    }
+
+    fun aturFoto(pakai: Boolean) {
+        pakaiFoto = pakai
+        sp.edit().putBoolean("foto", pakai).apply()
+    }
+
+    fun aturJendela(aktif: Boolean) {
+        selaluJendela = aktif
+        sp.edit().putBoolean("jendela", aktif).apply()
+    }
 
     private fun baca(kunci: String): List<String> =
         (sp.getString(kunci, "") ?: "").split(",").filter { it.isNotBlank() }
@@ -75,7 +119,8 @@ class Pengaturan(context: Context) {
 
     fun pilihWallpaper(i: Int) {
         wallpaper = i
-        sp.edit().putInt("wallpaper", i).apply()
+        pakaiFoto = false
+        sp.edit().putInt("wallpaper", i).putBoolean("foto", false).apply()
     }
 
     /** Pada pemakaian pertama, sematkan beberapa aplikasi umum yang terpasang. */
@@ -91,5 +136,37 @@ class Pengaturan(context: Context) {
         desktop.addAll(ada.take(2))
         simpan()
         sp.edit().putBoolean("awal", true).apply()
+    }
+}
+
+/** Wallpaper dari foto pilihan pengguna, disimpan di penyimpanan internal aplikasi. */
+object Foto {
+    private fun berkas(ctx: Context) = File(ctx.filesDir, "wallpaper.jpg")
+
+    fun simpan(ctx: Context, uri: Uri): Boolean {
+        return try {
+            val dm = ctx.resources.displayMetrics
+            val maks = maxOf(dm.widthPixels, dm.heightPixels)
+            val batas = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+            ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, batas) }
+            var skala = 1
+            while (batas.outWidth / (skala * 2) >= maks && batas.outHeight / (skala * 2) >= maks) skala *= 2
+            val opsi = BitmapFactory.Options().apply { inSampleSize = skala }
+            val bmp = ctx.contentResolver.openInputStream(uri)?.use { BitmapFactory.decodeStream(it, null, opsi) }
+            if (bmp == null) {
+                false
+            } else {
+                berkas(ctx).outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 90, it) }
+                true
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun muat(ctx: Context): ImageBitmap? {
+        val f = berkas(ctx)
+        if (!f.exists()) return null
+        return BitmapFactory.decodeFile(f.path)?.asImageBitmap()
     }
 }
