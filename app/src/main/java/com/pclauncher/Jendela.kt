@@ -27,7 +27,9 @@ import kotlin.math.roundToInt
 enum class Jenis(val ikon: String, val judul: String) {
     BERKAS("📁", "Berkas"),
     PERAMBAN("🌐", "Peramban"),
-    PENGATURAN("⚙️", "Pengaturan PC"),
+    CATATAN("📝", "Catatan"),
+    GAMBAR("🖼️", "Gambar"),
+    PENGATURAN("⚙️", "Pengaturan"),
 }
 
 /** Satu jendela melayang. Ukuran dan posisi dalam dp. */
@@ -59,8 +61,9 @@ class ManajerJendela {
 
     fun aktifId(): Int = daftar.filter { !it.diperkecil }.maxByOrNull { it.z }?.id ?: -1
 
-    fun buka(jenis: Jenis, url: String = "") {
-        val ada = if (jenis == Jenis.PERAMBAN) null else daftar.firstOrNull { it.jenis == jenis }
+    fun buka(jenis: Jenis, arg: String = "", judul: String = jenis.judul) {
+        val tunggal = jenis == Jenis.BERKAS || jenis == Jenis.PENGATURAN
+        val ada = if (tunggal) daftar.firstOrNull { it.jenis == jenis } else null
         if (ada != null) {
             fokus(ada)
             return
@@ -68,7 +71,7 @@ class ManajerJendela {
         val lebar = if (areaW >= 600f) 560f else areaW - 16f
         val tinggi = if (areaW >= 600f) 420f else areaH * 0.7f
         val geser = (daftar.size % 5) * 24f
-        val j = Jendela(nomor++, jenis, jenis.judul, (areaW - lebar) / 2f + geser, 12f + geser, lebar, tinggi, url)
+        val j = Jendela(nomor++, jenis, judul, (areaW - lebar) / 2f + geser, 12f + geser, lebar, tinggi, arg)
         daftar.add(j)
         fokus(j)
     }
@@ -145,7 +148,7 @@ private fun KomponenJendela(j: Jendela, aktif: Boolean, aw: Float, ah: Float, m:
                     )
                     .pointerInput(maks, aw, lebar) {
                         if (!maks) {
-                            detectDragGestures { change, d ->
+                            detectDragGestures(onDragEnd = { pasangSnap(j, aw, ah, lebar) }) { change, d ->
                                 change.consume()
                                 j.x = (j.x + d.x / dens).coerceIn(0f, maxOf(0f, aw - lebar))
                                 j.y = (j.y + d.y / dens).coerceAtLeast(0f)
@@ -168,8 +171,10 @@ private fun KomponenJendela(j: Jendela, aktif: Boolean, aw: Float, ah: Float, m:
             }
             Box(Modifier.weight(1f).fillMaxWidth()) {
                 when (j.jenis) {
-                    Jenis.BERKAS -> AplikasiBerkas()
+                    Jenis.BERKAS -> AplikasiBerkas(m)
                     Jenis.PERAMBAN -> AplikasiPeramban(j.urlAwal)
+                    Jenis.CATATAN -> AplikasiCatatan(j.urlAwal)
+                    Jenis.GAMBAR -> AplikasiGambar(j.urlAwal)
                     Jenis.PENGATURAN -> AplikasiPengaturan(p)
                 }
                 if (!maks) {
@@ -200,4 +205,14 @@ private fun TombolJ(teks: String, aksi: () -> Unit) {
         Modifier.width(40.dp).fillMaxHeight().clickable(onClick = aksi),
         contentAlignment = Alignment.Center,
     ) { Text(teks, fontSize = 14.sp) }
+}
+
+/** Tempel jendela ke tepi: kiri atau kanan menjadi setengah layar, tepi atas memaksimalkan. */
+private fun pasangSnap(j: Jendela, aw: Float, ah: Float, lebar: Float) {
+    if (lebar >= aw - 40f) return
+    when {
+        j.y <= 0f -> j.maksimal = true
+        j.x <= 2f -> { j.x = 0f; j.y = 0f; j.w = aw / 2f; j.h = ah }
+        j.x + lebar >= aw - 2f -> { j.x = aw / 2f; j.y = 0f; j.w = aw / 2f; j.h = ah }
+    }
 }

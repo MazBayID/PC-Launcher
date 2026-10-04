@@ -3,20 +3,29 @@
 Launcher Android bergaya desktop PC, dibuat dengan Kotlin + Jetpack Compose. Tanpa root dan tanpa internet.
 Dirancang untuk Advan X1 (Helio G100, Android 14, layar 1080x2460), tapi berjalan di Android 8.0+.
 
-## Fitur versi 0.3
-- **Jendela melayang milik launcher**: bisa digeser lewat bilah judul, diubah ukurannya dari sudut kanan bawah,
-  diperkecil, dimaksimalkan (atau ketuk dua kali bilah judul), dan ditutup. Jendela yang terbuka muncul di taskbar.
-- **Aplikasi bawaan** (di Start menu dan menu klik kanan desktop):
-  - **Berkas**: jelajah penyimpanan, buka berkas, buat folder, hapus. Butuh izin "Akses semua file".
-  - **Peramban**: WebView dengan tombol maju, mundur, muat ulang, dan kolom alamat atau pencarian.
-  - **Pengaturan PC**: transparansi dan warna taskbar, taskbar rata tengah, mode jendela, dan info DPI.
-- **Ganti nama aplikasi** lewat menu klik kanan ikon.
-- **Desktop**: ikon bisa diseret ke sel mana pun dan posisinya tersimpan; wallpaper gradien atau foto galeri.
-- **Taskbar**: tombol Start, aplikasi tersemat, jendela terbuka, baterai, jam, dan tanggal.
-- **Layar lebar** (lebar terkecil 600 dp ke atas): taskbar rata tengah dan Start menu lebih besar.
-- **Start menu** dengan pencarian. Hasil kosong menawarkan pencarian web; Enter membuka hasil pertama.
-- **Klik kanan mouse atau tekan lama** pada desktop dan ikon: buka, buka dalam jendela, sematkan ke taskbar,
-  taruh di desktop, ganti nama, info aplikasi, dan copot pemasangan.
+## Fitur versi 0.4
+**Jendela milik launcher**
+- Bilah judul bisa digeser; ukuran diubah dari sudut kanan bawah; diperkecil, dimaksimalkan (atau ketuk dua kali), dan ditutup.
+- **Snap**: seret ke tepi kiri atau kanan untuk setengah layar, ke tepi atas untuk memaksimalkan.
+- Jendela yang terbuka muncul di taskbar. Jendela yang diperkecil tetap hidup, jadi halaman web tidak hilang.
+
+**Aplikasi bawaan** (Start menu, taskbar, dan menu klik kanan desktop)
+- **Berkas**: pintasan folder, urutkan (nama, terbaru, ukuran), ganti nama, hapus, folder baru. Gambar dan teks dibuka di jendela bawaan.
+- **Peramban**: maju, mundur, muat ulang, kolom alamat atau pencarian.
+- **Catatan**: editor teks yang menyimpan ke berkas.
+- **Gambar**: zoom cubit, geser, ketuk dua kali untuk mengembalikan, orientasi EXIF dikoreksi.
+- **Pengaturan**: Personalisasi, Tampilan (DPI), Jendela, Sistem (RAM, penyimpanan), Tentang.
+
+**Taskbar dan panel**
+- Ketuk ikon status untuk **panel cepat**: volume, kecerahan, pintasan Internet, Bluetooth, dan Layar.
+- Ketuk jam untuk **kalender** bulanan.
+- Tombol Start, aplikasi tersemat, jendela terbuka, baterai, jam, tanggal. Transparansi dan warna bisa diatur.
+
+**Start menu bergaya Windows 11**
+- Bagian **Disematkan**, **Direkomendasikan** (terakhir dibuka), dan **Semua aplikasi**, plus pencarian aplikasi dan web.
+
+**Desktop**
+- Ikon bisa diseret ke sel mana pun, wallpaper gradien atau foto galeri, ganti nama aplikasi, klik kanan mouse atau tekan lama.
 
 ## Cara pakai
 1. Pasang APK dari **Releases** atau dari artifact di tab **Actions**.
@@ -36,7 +45,7 @@ diatur oleh sistem Android, bukan launcher, dan hasilnya bergantung pada ROM.
 
 ## Build
 Push ke GitHub, lalu tab **Actions** membuat `PC-Launcher-debug.apk` otomatis.
-Untuk rilis, buat tag: `git tag v0.3 && git push origin v0.3`.
+Untuk rilis, buat tag: `git tag v0.4 && git push origin v0.4`.
 Atau buka folder ini di Android Studio dan tekan Run.
 
 ## Lisensi

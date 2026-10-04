@@ -67,10 +67,10 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
-private fun warnaBarDari(p: Pengaturan): Color =
+fun warnaBarDari(p: Pengaturan): Color =
     WARNA_PILIHAN[p.warnaBar.coerceIn(0, WARNA_PILIHAN.lastIndex)].copy(alpha = p.transparansi)
 
-private fun warnaPanelDari(p: Pengaturan): Color =
+fun warnaPanelDari(p: Pengaturan): Color =
     WARNA_PILIHAN[p.warnaBar.coerceIn(0, WARNA_PILIHAN.lastIndex)].copy(alpha = 0.96f)
 private val JAM = DateTimeFormatter.ofPattern("HH:mm")
 private val TANGGAL = DateTimeFormatter.ofPattern("d/M/yyyy")
@@ -136,6 +136,7 @@ fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
     var start by remember { mutableStateOf(false) }
     var menuPos by remember { mutableStateOf<Offset?>(null) }
     var dialogWall by remember { mutableStateOf(false) }
+    var panel by remember { mutableIntStateOf(0) }
     var foto by remember { mutableStateOf<ImageBitmap?>(null) }
     var fotoVersi by remember { mutableIntStateOf(0) }
 
@@ -160,13 +161,15 @@ fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
     LaunchedEffect(fotoVersi, p.pakaiFoto) {
         foto = if (p.pakaiFoto) withContext(Dispatchers.IO) { Foto.muat(ctx) } else null
     }
-    LaunchedEffect(versi, sinyalHome) { start = false; menuPos = null }
-    BackHandler { start = false; menuPos = null }
+    LaunchedEffect(versi, sinyalHome) { start = false; menuPos = null; panel = 0 }
+    BackHandler { start = false; menuPos = null; panel = 0 }
 
     val peta = remember(apps) { apps.associateBy { it.pkg } }
     val buka: (AppInfo, Boolean) -> Unit = { a, jendela ->
         start = false
         menuPos = null
+        panel = 0
+        p.catatBuka(a.pkg)
         Peluncur.buka(ctx, a, jendela || p.selaluJendela)
     }
     val wall = daftarWallpaper.getOrElse(p.wallpaper) { daftarWallpaper[0] }
@@ -179,7 +182,7 @@ fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
             .klikKanan { menuPos = it }
             .pointerInput(Unit) {
                 detectTapGestures(
-                    onTap = { start = false; menuPos = null },
+                    onTap = { start = false; menuPos = null; panel = 0 },
                     onLongPress = { menuPos = it },
                 )
             }
@@ -234,6 +237,7 @@ fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
                     ItemMenu("Pengaturan PC") { menuPos = null; manajer.buka(Jenis.PENGATURAN) }
                     ItemMenu("Berkas") { menuPos = null; manajer.buka(Jenis.BERKAS) }
                     ItemMenu("Peramban") { menuPos = null; manajer.buka(Jenis.PERAMBAN) }
+                    ItemMenu("Catatan") { menuPos = null; manajer.buka(Jenis.CATATAN) }
                     ItemMenu("Pengaturan sistem") { menuPos = null; Peluncur.pengaturan(ctx, Settings.ACTION_SETTINGS) }
                     ItemMenu("Opsi pengembang (jendela bebas)") { menuPos = null; Peluncur.pengaturan(ctx, Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS) }
                     ItemMenu("Atur launcher default") { menuPos = null; Peluncur.pengaturan(ctx, Settings.ACTION_HOME_SETTINGS) }
@@ -245,7 +249,17 @@ fun Desktop(p: Pengaturan, versi: Int, sinyalHome: Int) {
             AnimatedVisibility(start) {
                 StartMenu(apps, p, buka) { jenis, url -> start = false; manajer.buka(jenis, url) }
             }
-            Taskbar(p.taskbar.mapNotNull { peta[it] }, p, start, { start = !start }, buka, manajer)
+            AnimatedVisibility(panel != 0) {
+                Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.CenterEnd) {
+                    if (panel == 1) PanelAksi(p) { panel = 0; manajer.buka(Jenis.PENGATURAN) } else PanelKalender(p)
+                }
+            }
+            Taskbar(
+                p.taskbar.mapNotNull { peta[it] }, p, start,
+                { start = !start; panel = 0 }, buka, manajer,
+                { panel = if (panel == 1) 0 else 1; start = false },
+                { panel = if (panel == 2) 0 else 2; start = false },
+            )
         }
     }
 
@@ -356,6 +370,7 @@ fun MenuAplikasi(app: AppInfo, p: Pengaturan, tampil: Boolean, buka: (AppInfo, B
         ItemMenu("Buka dalam jendela") { tutup(); buka(app, true) }
         ItemMenu(if (app.pkg in p.taskbar) "Lepas dari taskbar" else "Sematkan ke taskbar") { tutup(); p.toggleTaskbar(app.pkg) }
         ItemMenu(if (app.pkg in p.desktop) "Hapus dari desktop" else "Taruh di desktop") { tutup(); p.toggleDesktop(app.pkg) }
+        ItemMenu(if (app.pkg in p.startPin) "Lepas dari Start" else "Sematkan ke Start") { tutup(); p.toggleStartPin(app.pkg) }
         ItemMenu("Ganti nama") { tutup(); ganti = true }
         ItemMenu("Info aplikasi") { tutup(); Peluncur.info(ctx, app) }
         ItemMenu("Copot pemasangan") { tutup(); Peluncur.copot(ctx, app) }
@@ -381,9 +396,14 @@ fun StartMenu(
 ) {
     val lebar = layarLebar()
     var cari by remember { mutableStateOf("") }
+    var semua by remember { mutableStateOf(false) }
+    val peta = remember(apps) { apps.associateBy { it.pkg } }
     val hasil = remember(apps, cari) {
         if (cari.isBlank()) apps else apps.filter { it.nama.contains(cari, ignoreCase = true) }
     }
+    val tampilSemua = semua || cari.isNotBlank()
+    val disematkan = p.startPin.mapNotNull { peta[it] }
+    val terbaru = p.recents.mapNotNull { peta[it] }
     Box(
         Modifier.fillMaxWidth().padding(8.dp),
         contentAlignment = if (lebar) Alignment.Center else Alignment.CenterStart,
@@ -417,7 +437,7 @@ fun StartMenu(
                 )
                 Row(
                     Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
                 ) {
                     Jenis.values().forEach { jn ->
                         Surface(
@@ -426,24 +446,53 @@ fun StartMenu(
                             shape = RoundedCornerShape(10.dp),
                             modifier = Modifier.weight(1f),
                         ) {
-                            Column(Modifier.padding(10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                Text(jn.ikon, fontSize = 22.sp)
-                                Text(jn.judul, color = Color.White, fontSize = 11.sp, maxLines = 1)
+                            Column(Modifier.padding(vertical = 8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                Text(jn.ikon, fontSize = 20.sp)
+                                Text(jn.judul, color = Color.White, fontSize = 10.sp, maxLines = 1)
                             }
                         }
                     }
                 }
-                Text("Semua aplikasi (${hasil.size})", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
-                if (hasil.isEmpty() && cari.isNotBlank()) {
-                    TextButton(onClick = { onBuka(Jenis.PERAMBAN, cari) }) {
-                        Text("🌐 Cari \"$cari\" di web", color = Color(0xFF4FC3F7))
+                if (tampilSemua) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Semua aplikasi (${hasil.size})", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                        if (semua && cari.isBlank()) TextButton(onClick = { semua = false }) { Text("‹ Kembali", fontSize = 12.sp) }
                     }
-                }
-                LazyVerticalGrid(
-                    columns = GridCells.Adaptive(88.dp),
-                    modifier = Modifier.heightIn(max = if (lebar) 440.dp else 360.dp),
-                ) {
-                    items(hasil, key = { it.pkg }) { a -> IkonApp(a, p, buka, 44.dp, 88.dp) }
+                    if (hasil.isEmpty() && cari.isNotBlank()) {
+                        TextButton(onClick = { onBuka(Jenis.PERAMBAN, cari) }) {
+                            Text("🌐 Cari \"$cari\" di web", color = Color(0xFF4FC3F7))
+                        }
+                    }
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(88.dp),
+                        modifier = Modifier.heightIn(max = if (lebar) 400.dp else 340.dp),
+                    ) {
+                        items(hasil, key = { it.pkg }) { a -> IkonApp(a, p, buka, 44.dp, 88.dp) }
+                    }
+                } else {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text("Disematkan", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                        TextButton(onClick = { semua = true }) { Text("Semua aplikasi ›", fontSize = 12.sp) }
+                    }
+                    if (disematkan.isEmpty()) {
+                        Text(
+                            "Tekan lama sebuah aplikasi, lalu pilih \"Sematkan ke Start\".",
+                            color = Color.White.copy(alpha = 0.6f),
+                            fontSize = 12.sp,
+                        )
+                    }
+                    LazyVerticalGrid(
+                        columns = GridCells.Adaptive(88.dp),
+                        modifier = Modifier.heightIn(max = if (lebar) 230.dp else 210.dp),
+                    ) {
+                        items(disematkan, key = { it.pkg }) { a -> IkonApp(a, p, buka, 44.dp, 88.dp) }
+                    }
+                    if (terbaru.isNotEmpty()) {
+                        Text("Direkomendasikan", color = Color.White.copy(alpha = 0.7f), fontSize = 12.sp)
+                        Row(Modifier.horizontalScroll(rememberScrollState())) {
+                            terbaru.forEach { a -> key(a.pkg) { IkonApp(a, p, buka, 40.dp, 88.dp) } }
+                        }
+                    }
                 }
             }
         }
@@ -491,6 +540,8 @@ fun Taskbar(
     onStart: () -> Unit,
     buka: (AppInfo, Boolean) -> Unit,
     m: ManajerJendela,
+    onAksi: () -> Unit,
+    onKalender: () -> Unit,
 ) {
     val tengah = layarLebar() || p.taskbarTengah
     val aktifId = m.aktifId()
@@ -522,7 +573,7 @@ fun Taskbar(
                     items(m.daftar, key = { "w${it.id}" }) { j -> TombolJendela(j, j.id == aktifId, m) }
                 }
             }
-            Tray()
+            Tray(onAksi, onKalender)
         }
     }
 }
@@ -560,7 +611,7 @@ private fun IkonTaskbar(app: AppInfo, p: Pengaturan, buka: (AppInfo, Boolean) ->
 }
 
 @Composable
-private fun Tray() {
+private fun Tray(onAksi: () -> Unit, onKalender: () -> Unit) {
     val ctx = LocalContext.current
     var waktu by remember { mutableStateOf(LocalDateTime.now()) }
     var bat by remember { mutableStateOf(baterai(ctx)) }
@@ -571,9 +622,17 @@ private fun Tray() {
             delay(15_000)
         }
     }
-    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        Text("${bat.first}%" + if (bat.second) " ⚡" else "", color = Color.White, fontSize = 12.sp)
-        Column(horizontalAlignment = Alignment.End) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            "📶 🔊 ${bat.first}%" + if (bat.second) "⚡" else "",
+            color = Color.White,
+            fontSize = 12.sp,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onAksi() }.padding(horizontal = 8.dp, vertical = 8.dp),
+        )
+        Column(
+            horizontalAlignment = Alignment.End,
+            modifier = Modifier.clip(RoundedCornerShape(8.dp)).clickable { onKalender() }.padding(horizontal = 8.dp, vertical = 4.dp),
+        ) {
             Text(waktu.format(JAM), color = Color.White, fontSize = 13.sp)
             Text(waktu.format(TANGGAL), color = Color.White.copy(alpha = 0.8f), fontSize = 11.sp)
         }

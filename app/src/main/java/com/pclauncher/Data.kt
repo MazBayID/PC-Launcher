@@ -67,6 +67,22 @@ class Pengaturan(context: Context) {
     val taskbar = mutableStateListOf<String>().apply { addAll(baca("taskbar")) }
     val desktop = mutableStateListOf<String>().apply { addAll(baca("desktop")) }
 
+    /** Aplikasi yang disematkan di Start menu dan daftar yang terakhir dibuka. */
+    val startPin = mutableStateListOf<String>().apply { addAll(baca("startpin")) }
+    val recents = mutableStateListOf<String>().apply { addAll(baca("recents")) }
+
+    fun toggleStartPin(pkg: String) {
+        if (!startPin.remove(pkg)) startPin.add(pkg)
+        sp.edit().putString("startpin", startPin.joinToString(",")).apply()
+    }
+
+    fun catatBuka(pkg: String) {
+        recents.remove(pkg)
+        recents.add(0, pkg)
+        while (recents.size > 8) recents.removeAt(recents.lastIndex)
+        sp.edit().putString("recents", recents.joinToString(",")).apply()
+    }
+
     /** Posisi ikon desktop pada grid: kolom (x) dan baris (y). */
     val posisi = mutableStateMapOf<String, IntOffset>().apply {
         bacaPosisi().forEach { put(it.first, it.second) }
@@ -183,6 +199,7 @@ class Pengaturan(context: Context) {
         )
         val ada = kandidat.filter { it in terpasang }
         taskbar.addAll(ada)
+        startPin.addAll(ada)
         desktop.addAll(ada.take(2))
         simpan()
         sp.edit().putBoolean("awal", true).apply()
